@@ -263,8 +263,14 @@ async function handlePost(
     // Always verify against the listed service price — bidPrice is stored for negotiation
     // records only and must not reduce the payment amount until server-side accepted.
     const expectedAmount = Number(service.price).toFixed(2);
-    const verified = await verifyX402Payment(paymentToken, expectedAmount, expectedPayee);
-    if (!verified) {
+    const verificationResult = await verifyX402Payment(paymentToken, expectedAmount, expectedPayee);
+    if (!verificationResult.valid) {
+      logger.error({ 
+        event: "x402_verification_failed", 
+        errorCategory: verificationResult.errorCategory,
+        errorMessage: verificationResult.errorMessage,
+        talosId: id 
+      }, "Invalid x402 payment token provided");
       return Response.json(
         { error: "Invalid or insufficient x402 payment" },
         { status: 402 }

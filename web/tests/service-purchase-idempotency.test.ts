@@ -277,7 +277,7 @@ function setupAuth() {
 }
 
 function setupPayment() {
-  mocks.mockVerifyX402Payment.mockResolvedValue(true);
+  mocks.mockVerifyX402Payment.mockResolvedValue({ valid: true });
   mocks.mockSettleX402Payment.mockResolvedValue({ txHash: "tx-hash-settled" });
 }
 
