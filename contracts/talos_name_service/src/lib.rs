@@ -139,7 +139,10 @@ pub enum ContractError {
 
 fn emit_name_registered(env: &Env, talos_id: u32, name: String, owner: Address) {
     let topics = (symbol_short!("name_reg"), talos_id);
-    env.events().publish(topics, (name, owner));
+    env.events().publish(topics, (name.clone(), owner.clone()));
+
+    let topics2 = (symbol_short!("name_reg2"), talos_id);
+    env.events().publish(topics2, (1u32, name, owner));
 }
 
 fn emit_registry_updated(env: &Env, old_registry: Address, new_registry: Address) {
@@ -2262,17 +2265,32 @@ mod tests {
             .iter()
             .filter(|e| e.0 == contract_id)
             .collect::<std::vec::Vec<_>>();
-        assert_eq!(events.len(), 1);
-        let (_addr, topics, data) = events.get(0).unwrap();
-        assert_eq!(topics.len() as u32, 2);
-        let t0: Symbol = TryFromVal::try_from_val(&env, &topics.get(0).unwrap()).unwrap();
-        let t1: u32 = TryFromVal::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
-        assert_eq!(t0, symbol_short!("name_reg"));
-        assert_eq!(t1, talos_id);
-        let (got_name, got_owner): (String, Address) =
-            TryFromVal::try_from_val(&env, data).unwrap();
-        assert_eq!(got_name, name);
-        assert_eq!(got_owner, owner);
+        assert_eq!(events.len(), 2);
+        
+        // Assert name_reg
+        let (_addr1, topics1, data1) = events.get(0).unwrap();
+        assert_eq!(topics1.len() as u32, 2);
+        let t0_1: Symbol = TryFromVal::try_from_val(&env, &topics1.get(0).unwrap()).unwrap();
+        let t1_1: u32 = TryFromVal::try_from_val(&env, &topics1.get(1).unwrap()).unwrap();
+        assert_eq!(t0_1, symbol_short!("name_reg"));
+        assert_eq!(t1_1, talos_id);
+        let (got_name1, got_owner1): (String, Address) =
+            TryFromVal::try_from_val(&env, data1).unwrap();
+        assert_eq!(got_name1, name);
+        assert_eq!(got_owner1, owner);
+
+        // Assert name_reg2
+        let (_addr2, topics2, data2) = events.get(1).unwrap();
+        assert_eq!(topics2.len() as u32, 2);
+        let t0_2: Symbol = TryFromVal::try_from_val(&env, &topics2.get(0).unwrap()).unwrap();
+        let t1_2: u32 = TryFromVal::try_from_val(&env, &topics2.get(1).unwrap()).unwrap();
+        assert_eq!(t0_2, symbol_short!("name_reg2"));
+        assert_eq!(t1_2, talos_id);
+        let (got_version2, got_name2, got_owner2): (u32, String, Address) =
+            TryFromVal::try_from_val(&env, data2).unwrap();
+        assert_eq!(got_version2, 1);
+        assert_eq!(got_name2, name);
+        assert_eq!(got_owner2, owner);
     }
 
     #[test]

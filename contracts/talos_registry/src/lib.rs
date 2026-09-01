@@ -178,8 +178,11 @@ pub enum DataKey {
 //                                                  Reasons callers hit a deprecated path.
 
 fn emit_talos_created(env: &Env, talos_id: u32, creator: Address, name: String, category: String) {
-    let topics = (symbol_short!("tls_crt"), creator);
-    env.events().publish(topics, (talos_id, name, category));
+    let topics = (symbol_short!("tls_crt"), creator.clone());
+    env.events().publish(topics, (talos_id, name.clone(), category.clone()));
+
+    let topics2 = (symbol_short!("tls_crt2"), creator);
+    env.events().publish(topics2, (1u32, talos_id, name, category));
 }
 
 fn emit_patron_updated(env: &Env, talos_id: u32, patron: &Patron) {
@@ -2144,19 +2147,34 @@ mod tests {
         let id = create_talos_with_auth(&env, &client, &contract_id, &creator, &protocol_wallet);
 
         let events = env.events().all();
-        assert_eq!(events.len(), 1);
-        let (addr, topics, data) = events.get(0).unwrap();
+        assert_eq!(events.len(), 2);
+        
+        // Assert tls_crt
+        let (addr1, topics1, data1) = events.get(0).unwrap();
+        assert_eq!(addr1, contract_id);
+        assert_eq!(topics1.len(), 2);
+        assert_topic_symbol(&env, &topics1, 0, symbol_short!("tls_crt"));
+        assert_topic_address(&env, &topics1, 1, &creator);
 
-        assert_eq!(addr, contract_id);
-        assert_eq!(topics.len(), 2);
-        assert_topic_symbol(&env, &topics, 0, symbol_short!("tls_crt"));
-        assert_topic_address(&env, &topics, 1, &creator);
+        let (got_id1, got_name1, got_cat1): (u32, String, String) =
+            TryFromVal::try_from_val(&env, &data1).unwrap();
+        assert_eq!(got_id1, id);
+        assert_eq!(got_name1, s(&env, "Genesis"));
+        assert_eq!(got_cat1, s(&env, "Marketing"));
 
-        let (got_id, got_name, got_cat): (u32, String, String) =
-            TryFromVal::try_from_val(&env, &data).unwrap();
-        assert_eq!(got_id, id);
-        assert_eq!(got_name, s(&env, "Genesis"));
-        assert_eq!(got_cat, s(&env, "Marketing"));
+        // Assert tls_crt2
+        let (addr2, topics2, data2) = events.get(1).unwrap();
+        assert_eq!(addr2, contract_id);
+        assert_eq!(topics2.len(), 2);
+        assert_topic_symbol(&env, &topics2, 0, symbol_short!("tls_crt2"));
+        assert_topic_address(&env, &topics2, 1, &creator);
+
+        let (got_version2, got_id2, got_name2, got_cat2): (u32, u32, String, String) =
+            TryFromVal::try_from_val(&env, &data2).unwrap();
+        assert_eq!(got_version2, 1);
+        assert_eq!(got_id2, id);
+        assert_eq!(got_name2, s(&env, "Genesis"));
+        assert_eq!(got_cat2, s(&env, "Marketing"));
     }
 
     #[test]
@@ -2188,10 +2206,10 @@ mod tests {
             }])
             .update_patron(&id, &new_patron);
 
-        // tls_crt from create_talos + pat_upd from update_patron
+        // tls_crt and tls_crt2 from create_talos + pat_upd from update_patron
         let events = env.events().all();
-        assert_eq!(events.len(), 2);
-        let (addr, topics, data) = events.get(1).unwrap();
+        assert_eq!(events.len(), 3);
+        let (addr, topics, data) = events.get(2).unwrap();
 
         assert_eq!(addr, contract_id);
         assert_eq!(topics.len(), 2);
