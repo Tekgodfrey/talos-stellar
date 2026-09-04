@@ -265,11 +265,11 @@ async function handlePost(
     const expectedAmount = Number(service.price).toFixed(2);
     const verificationResult = await verifyX402Payment(paymentToken, expectedAmount, expectedPayee);
     if (!verificationResult.valid) {
-      logger.error({ 
-        event: "x402_verification_failed", 
+      logger.error({
+        event: "x402_verification_failed",
         errorCategory: verificationResult.errorCategory,
         errorMessage: verificationResult.errorMessage,
-        talosId: id 
+        talosId: id
       }, "Invalid x402 payment token provided");
       return Response.json(
         { error: "Invalid or insufficient x402 payment" },
