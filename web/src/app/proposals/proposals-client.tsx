@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useWallet } from "@/components/wallet-gate";
+import { useTranslation, type TranslateFn } from "@/lib/i18n";
 
 interface Proposal {
   id: string;
@@ -19,14 +20,14 @@ interface Proposal {
   createdAt: string;
 }
 
-function getRelativeTime(dateStr: string): string {
+function getRelativeTime(dateStr: string, t: TranslateFn): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1) return t("proposals.time.justNow");
+  if (minutes < 60) return t("proposals.time.minutesAgo", { count: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  if (hours < 24) return t("proposals.time.hoursAgo", { count: hours });
+  return t("proposals.time.daysAgo", { count: Math.floor(hours / 24) });
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -40,6 +41,7 @@ type Filter = (typeof FILTERS)[number];
 
 export function ProposalsClient() {
   const { isConnected, address, connect } = useWallet();
+  const { t } = useTranslation();
 
   const [filter, setFilter] = useState<Filter>("all");
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -79,13 +81,13 @@ export function ProposalsClient() {
             ),
           );
         } else {
-          alert(data.error || "Vote failed");
+          alert(data.error || t("proposals.voteFailed"));
         }
       } finally {
         setVoting((v) => ({ ...v, [proposal.id]: false }));
       }
     },
-    [address],
+    [address, t],
   );
 
   const pending = proposals.filter((p) => p.status === "pending").length;
@@ -96,10 +98,12 @@ export function ProposalsClient() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex gap-6 text-sm">
           <span className="text-muted">
-            <span className="text-accent font-bold">{proposals.length}</span> total
+            <span className="text-accent font-bold">{proposals.length}</span>{" "}
+            {t("proposals.stats.total", { count: proposals.length }).replace(`${proposals.length} `, "")}
           </span>
           <span className="text-muted">
-            <span className="text-yellow-400 font-bold">{pending}</span> pending
+            <span className="text-yellow-400 font-bold">{pending}</span>{" "}
+            {t("proposals.stats.pending", { count: pending }).replace(`${pending} `, "")}
           </span>
         </div>
         <div className="flex gap-1">
@@ -113,7 +117,7 @@ export function ProposalsClient() {
                   : "border-border text-muted hover:border-accent/50 hover:text-foreground"
               }`}
             >
-              {f}
+              {t(`proposals.filters.${f}`)}
             </button>
           ))}
         </div>
@@ -122,23 +126,23 @@ export function ProposalsClient() {
       {/* Wallet prompt */}
       {!isConnected && (
         <div className="bg-surface border border-border px-5 py-4 flex items-center justify-between gap-4">
-          <p className="text-sm text-muted">Connect your wallet to vote on pending proposals.</p>
+          <p className="text-sm text-muted">{t("proposals.walletPrompt.text")}</p>
           <button
             onClick={connect}
             className="bg-accent text-background px-4 py-1.5 text-xs font-medium hover:bg-foreground transition-colors shrink-0"
           >
-            Connect Wallet
+            {t("proposals.walletPrompt.button")}
           </button>
         </div>
       )}
 
       {/* Proposal list */}
       {loading && (
-        <div className="py-16 text-center text-muted text-sm">Loading proposals...</div>
+        <div className="py-16 text-center text-muted text-sm">{t("proposals.loading")}</div>
       )}
 
       {!loading && proposals.length === 0 && (
-        <div className="py-16 text-center text-muted text-sm">No proposals found.</div>
+        <div className="py-16 text-center text-muted text-sm">{t("proposals.empty")}</div>
       )}
 
       {!loading &&
@@ -181,14 +185,14 @@ export function ProposalsClient() {
                     onClick={() => handleVote(p, "approved")}
                     className="text-xs px-3 py-1.5 border border-green-400/30 text-green-400 hover:bg-green-400 hover:text-background transition-colors disabled:opacity-40"
                   >
-                    Approve
+                    {t("proposals.actions.approve")}
                   </button>
                   <button
                     disabled={voting[p.id]}
                     onClick={() => handleVote(p, "rejected")}
                     className="text-xs px-3 py-1.5 border border-red-400/30 text-red-400 hover:bg-red-400 hover:text-background transition-colors disabled:opacity-40"
                   >
-                    Reject
+                    {t("proposals.actions.reject")}
                   </button>
                 </div>
               )}
@@ -196,14 +200,14 @@ export function ProposalsClient() {
 
             {/* Footer row */}
             <div className="flex flex-wrap gap-4 text-xs text-muted/60">
-              <span title={p.createdAt}>{getRelativeTime(p.createdAt)}</span>
+              <span title={p.createdAt}>{getRelativeTime(p.createdAt, t)}</span>
               {p.decidedBy && (
                 <span>
-                  Decided by{" "}
+                  {t("proposals.decidedBy")}{" "}
                   <span className="font-mono">
                     {p.decidedBy.slice(0, 6)}...{p.decidedBy.slice(-4)}
                   </span>
-                  {p.decidedAt && ` · ${getRelativeTime(p.decidedAt)}`}
+                  {p.decidedAt && ` · ${getRelativeTime(p.decidedAt, t)}`}
                 </span>
               )}
               {p.txHash && (
