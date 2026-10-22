@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import { ProposalsClient } from "./proposals-client";
 import { t } from "@/lib/i18n";
 
@@ -11,7 +12,11 @@ export default function ProposalsPage() {
       <p className="text-sm text-muted mb-8">
         {t("proposals.description")}
       </p>
-      <ProposalsClient />
+      <Suspense
+        fallback={<div className="py-16 text-center text-muted text-sm">Loading proposals...</div>}
+      >
+        <ProposalsClient />
+      </Suspense>
     </div>
   );
 }

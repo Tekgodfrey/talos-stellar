@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useWallet } from "@/components/wallet-gate";
 import { useTranslation, type TranslateFn } from "@/lib/i18n";
 
@@ -36,27 +37,91 @@ const STATUS_STYLE: Record<string, string> = {
   rejected: "text-red-400",
 };
 
-const FILTERS = ["all", "pending", "approved", "rejected"] as const;
-type Filter = (typeof FILTERS)[number];
+const FILTERS = ["all", ...PROPOSAL_STATUSES] as const;
+
+interface TalosOption {
+  id: string;
+  name: string;
+}
+
+const SELECT_CLASS =
+  "bg-surface border border-border text-xs text-foreground px-2 py-1 focus:border-accent outline-none";
 
 export function ProposalsClient() {
   const { isConnected, address, connect } = useWallet();
   const { t } = useTranslation();
 
-  const [filter, setFilter] = useState<Filter>("all");
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [talosOptions, setTalosOptions] = useState<TalosOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [voting, setVoting] = useState<Record<string, boolean>>({});
+  const [voteStatus, setVoteStatus] = useState<string>("");
+  // Ignore responses from a previous filter selection that arrive late.
+  const requestId = useRef(0);
 
-  const load = useCallback(async (f: Filter) => {
+  const updateFilters = useCallback(
+    (patch: Partial<ProposalFilters>) => {
+      router.replace(buildProposalsPageUrl({ ...filters, ...patch }), { scroll: false });
+    },
+    [router, filters],
+  );
+
+  // First page: runs on mount and whenever any filter in the URL changes.
+  useEffect(() => {
+    const id = ++requestId.current;
     setLoading(true);
-    const url = f === "all" ? "/api/proposals" : `/api/proposals?status=${f}`;
-    const res = await fetch(url);
-    if (res.ok) setProposals(await res.json());
-    setLoading(false);
-  }, []);
+    setError(null);
+    (async () => {
+      try {
+        const res = await fetch(buildProposalsApiUrl(filters));
+        if (id !== requestId.current) return;
+        if (!res.ok) throw new Error("Failed to load proposals");
+        const data = await res.json();
+        if (id !== requestId.current) return;
+        setProposals(data.proposals);
+        setNextCursor(data.nextCursor);
+        if (data.talos) setTalosOptions(data.talos);
+      } catch {
+        if (id === requestId.current) setError("Could not load proposals. Please try again.");
+      } finally {
+        if (id === requestId.current) setLoading(false);
+      }
+    })();
+  }, [filters]);
 
-  useEffect(() => { load(filter); }, [filter, load]);
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    const id = requestId.current;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(buildProposalsApiUrl(filters, nextCursor));
+      if (id !== requestId.current) return;
+      if (!res.ok) throw new Error("Failed to load more proposals");
+      const data = await res.json();
+      if (id !== requestId.current) return;
+      setProposals((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        return [...prev, ...data.proposals.filter((p: Proposal) => !seen.has(p.id))];
+      });
+      setNextCursor(data.nextCursor);
+    } catch {
+      if (id === requestId.current) setError("Could not load more proposals. Please try again.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [filters, nextCursor, loadingMore]);
+
+  // Keep the selected Talos in the dropdown even before options have loaded
+  // (e.g. when arriving from a shared link).
+  const talosSelectOptions = useMemo(() => {
+    if (filters.talosId === "all" || talosOptions.some((t) => t.id === filters.talosId)) {
+      return talosOptions;
+    }
+    return [{ id: filters.talosId, name: filters.talosId }, ...talosOptions];
+  }, [talosOptions, filters.talosId]);
 
   const handleVote = useCallback(
     async (proposal: Proposal, decision: "approved" | "rejected") => {
@@ -80,6 +145,7 @@ export function ProposalsClient() {
                 : p,
             ),
           );
+          setVoteStatus(`Proposal "${proposal.title}" ${decision}.`);
         } else {
           alert(data.error || t("proposals.voteFailed"));
         }
@@ -166,7 +232,14 @@ export function ProposalsClient() {
                     [{p.status.toUpperCase()}]
                   </span>
                 </div>
-                <h3 className="text-sm font-bold text-foreground">{p.title}</h3>
+                <h3 className="text-sm font-bold text-foreground">
+                  <Link
+                    href={`/proposals/${p.id}`}
+                    className="hover:text-accent transition-colors"
+                  >
+                    {p.title}
+                  </Link>
+                </h3>
                 {p.description && (
                   <p className="text-xs text-muted mt-1 leading-relaxed">{p.description}</p>
                 )}
@@ -183,6 +256,7 @@ export function ProposalsClient() {
                   <button
                     disabled={voting[p.id]}
                     onClick={() => handleVote(p, "approved")}
+                    aria-label={`Approve proposal: ${p.title}`}
                     className="text-xs px-3 py-1.5 border border-green-400/30 text-green-400 hover:bg-green-400 hover:text-background transition-colors disabled:opacity-40"
                   >
                     {t("proposals.actions.approve")}
@@ -190,6 +264,7 @@ export function ProposalsClient() {
                   <button
                     disabled={voting[p.id]}
                     onClick={() => handleVote(p, "rejected")}
+                    aria-label={`Reject proposal: ${p.title}`}
                     className="text-xs px-3 py-1.5 border border-red-400/30 text-red-400 hover:bg-red-400 hover:text-background transition-colors disabled:opacity-40"
                   >
                     {t("proposals.actions.reject")}
@@ -223,6 +298,18 @@ export function ProposalsClient() {
             </div>
           </div>
         ))}
+
+      {!loading && nextCursor && (
+        <div className="flex justify-center pt-2">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="px-6 py-2 text-xs border border-border text-muted hover:border-accent/50 hover:text-foreground transition-colors disabled:opacity-40"
+          >
+            {loadingMore ? "Loading..." : "Load more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
